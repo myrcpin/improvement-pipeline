@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Bar,
   BarChart,
@@ -74,6 +75,13 @@ export function DashboardPanel({
   archived: Idea[];
   onViewArchive: () => void;
 }) {
+  const [hovered, setHovered] = useState<{
+    id: string;
+    title: string;
+    impact: number;
+    risk: string;
+  } | null>(null);
+  const [cursor, setCursor] = useState({ x: 0, y: 0, w: 0 });
   const implemented = ideas.filter((i) => i.stage === "Implemented");
   const hoursSaved = implemented.reduce((s, i) => s + (i.actualHoursSaved ?? i.hoursSaved), 0);
   const totalValue = ideas.reduce((s, i) => s + enterpriseValue(i), 0);
@@ -110,7 +118,10 @@ export function DashboardPanel({
     z: Math.max(1, enterpriseValue(i) / 1000),
     id: i.id,
     title: i.title,
+    impact: impactScore(i),
+    risk: i.risk,
   }));
+  type Point = (typeof scatterData)[number];
 
   return (
     <div className="space-y-4">
@@ -177,7 +188,16 @@ export function DashboardPanel({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Impact score vs risk / control impact">
-          <div className="h-72">
+          {/* Custom tooltip: one box per hovered point, follows the cursor, removed on mouse-out.
+              (Recharts' default tooltip listed x, y and z as three duplicate rows.) */}
+          <div
+            className="relative h-72"
+            onMouseMove={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setCursor({ x: e.clientX - r.left, y: e.clientY - r.top, w: r.width });
+            }}
+            onMouseLeave={() => setHovered(null)}
+          >
             <ResponsiveContainer width="100%" height="100%">
               <ScatterChart margin={{ top: 8, right: 16, left: -12, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -205,25 +225,47 @@ export function DashboardPanel({
                 <ZAxis type="number" dataKey="z" range={[60, 400]} />
                 <ReferenceLine x={5} stroke="var(--border)" />
                 <ReferenceLine y={2} stroke="var(--border)" />
-                <Tooltip
-                  cursor={{ strokeDasharray: "3 3" }}
-                  contentStyle={{
-                    borderRadius: 8,
-                    border: "1px solid var(--border)",
-                    fontSize: 12,
-                  }}
-                  formatter={(_v, _n, item: { payload?: { title?: string } }) => [
-                    item?.payload?.title ?? "",
-                    "",
-                  ]}
-                />
-                <Scatter data={scatterData} fill="var(--chart-3)">
+                <Scatter
+                  data={scatterData}
+                  fill="var(--chart-3)"
+                  isAnimationActive={false}
+                  onMouseEnter={(p: { payload?: Point }) => setHovered(p?.payload ?? null)}
+                  onMouseLeave={() => setHovered(null)}
+                >
                   {scatterData.map((d) => (
-                    <Cell key={d.id} fill="var(--chart-3)" />
+                    <Cell
+                      key={d.id}
+                      fill="var(--chart-3)"
+                      fillOpacity={hovered && hovered.id !== d.id ? 0.45 : 0.9}
+                      stroke={hovered?.id === d.id ? "var(--navy)" : "none"}
+                      strokeWidth={2}
+                      style={{ cursor: "pointer" }}
+                    />
                   ))}
                 </Scatter>
               </ScatterChart>
             </ResponsiveContainer>
+            {hovered && (
+              <div
+                role="tooltip"
+                data-testid="scatter-tooltip"
+                className="pointer-events-none absolute z-10 w-56 rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-lg"
+                style={{
+                  left: Math.min(cursor.x + 14, cursor.w - 232),
+                  top: Math.max(cursor.y - 70, 0),
+                }}
+              >
+                <p className="font-semibold leading-snug text-foreground">{hovered.title}</p>
+                <p className="mt-1 text-muted-foreground">
+                  Impact score{" "}
+                  <span className="font-medium text-foreground">{hovered.impact}/10</span>
+                </p>
+                <p className="text-muted-foreground">
+                  Risk / control impact{" "}
+                  <span className="font-medium text-foreground">{hovered.risk}</span>
+                </p>
+              </div>
+            )}
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
             Bubble size reflects enterprise annual value. Top-right is high impact, high control

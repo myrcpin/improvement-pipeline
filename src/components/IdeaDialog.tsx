@@ -176,6 +176,10 @@ export function IdeaDialog({
       targetDate: form.targetDate || null,
       actualHoursSaved: optNum(form.actualHoursSaved),
     };
+    // Changing an AI-suggested value in the editor marks it as overridden.
+    if (idea.effortSource === "ai" && changes.effort !== idea.effort)
+      changes.effortSource = "overridden";
+    if (idea.riskSource === "ai" && changes.risk !== idea.risk) changes.riskSource = "overridden";
     const next = { ...idea, ...changes };
     if (next.stage !== idea.stage) {
       const problem = validateMove(next, next.stage);

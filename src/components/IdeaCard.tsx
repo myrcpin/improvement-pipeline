@@ -5,6 +5,8 @@ import {
   Gauge,
   MoreVertical,
   Pencil,
+  Sparkles,
+  UserPen,
   ShieldAlert,
   Trash2,
   Users,
@@ -23,6 +25,7 @@ import {
   impactScore,
   perPersonValue,
   roiRatio,
+  type FieldSource,
   type Idea,
 } from "@/lib/ideas";
 
@@ -31,6 +34,23 @@ const tone: Record<string, string> = {
   Medium: "bg-warning/15 text-warning",
   High: "bg-destructive/10 text-destructive",
 };
+
+/** Small tag showing whether an Effort / Risk value came from the AI or was changed by a person. */
+function SourceTag({ source }: { source: FieldSource | undefined }) {
+  if (!source) return null;
+  const ai = source === "ai";
+  return (
+    <span
+      title={ai ? "Value suggested by AI" : "AI suggestion manually overridden"}
+      className={`ml-1 inline-flex items-center gap-0.5 rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide ${
+        ai ? "bg-navy/10 text-navy" : "bg-secondary text-secondary-foreground"
+      }`}
+    >
+      {ai ? <Sparkles className="size-2.5" /> : <UserPen className="size-2.5" />}
+      {ai ? "AI-suggested" : "Overridden"}
+    </span>
+  );
+}
 
 const priorityTone: Record<string, string> = {
   High: "bg-destructive/10 text-destructive",
@@ -142,11 +162,13 @@ export function IdeaCard({
           className={`inline-flex items-center gap-1 rounded-md px-2 py-1 font-medium ${tone[idea.effort]}`}
         >
           <Gauge className="size-3" /> {idea.effort} effort
+          <SourceTag source={idea.effortSource} />
         </span>
         <span
           className={`inline-flex items-center gap-1 rounded-md px-2 py-1 font-medium ${tone[idea.risk]}`}
         >
           <ShieldAlert className="size-3" /> {idea.risk} risk
+          <SourceTag source={idea.riskSource} />
         </span>
         {idea.priority && (
           <span

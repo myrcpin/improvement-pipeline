@@ -27,6 +27,46 @@ export const HOURLY_RATES: Record<Role, number> = {
   SVP: 58,
 };
 
+/** Plain-language definitions shown in the form's "?" help. */
+export const FIELD_HELP: Record<"area" | "effort" | "risk" | "role", { title: string; items: [string, string][] }> = {
+  area: {
+    title: "Process affected",
+    items: [
+      ["Cash Processing", "Payments, cash movements and liquidity handling."],
+      ["Client Reporting", "Statements, valuations and reports sent to clients."],
+      ["Reconciliation", "Matching internal records to custodians, banks or ledgers."],
+      ["Client Onboarding", "Account opening, KYC/AML and client documentation."],
+      ["Other", "Anything outside the four areas above."],
+    ],
+  },
+  effort: {
+    title: "Effort to implement",
+    items: [
+      ["Low", "Under 1 week of build or configuration work."],
+      ["Medium", "1 to 4 weeks of work."],
+      ["High", "Over 4 weeks, or needs cross-team dependencies."],
+    ],
+  },
+  risk: {
+    title: "Risk / control impact",
+    items: [
+      ["Low", "No change to controls, approvals or client money movement."],
+      ["Medium", "Changes a control step, report or client-facing output."],
+      ["High", "Touches payments, reconciliations or regulatory controls."],
+    ],
+  },
+  role: {
+    title: "Role / pay grade affected",
+    items: [
+      ["Analyst", `Entry-level processing staff (about £${HOURLY_RATES["Analyst"]}/hr).`],
+      ["Senior Analyst", `Experienced processors and checkers (about £${HOURLY_RATES["Senior Analyst"]}/hr).`],
+      ["AVP", `Team leads and subject experts (about £${HOURLY_RATES["AVP"]}/hr).`],
+      ["VP", `Managers of a function (about £${HOURLY_RATES["VP"]}/hr).`],
+      ["SVP", `Senior leadership (about £${HOURLY_RATES["SVP"]}/hr).`],
+    ],
+  },
+};
+
 export const EFFORT_WEIGHT: Record<Effort, number> = { Low: 1, Medium: 3, High: 6 };
 
 /** Raw score at which an idea reaches a 10/10 impact score (roughly 6 hrs/week at Low effort). */
@@ -68,7 +108,12 @@ export type Idea = {
   status: IdeaStatus;
   archivedAt: string | null;
   deletedAt: string | null;
+  /** Where the Effort / Risk values came from: AI suggestion, human override of it, or not tracked. */
+  effortSource?: FieldSource;
+  riskSource?: FieldSource;
 };
+
+export type FieldSource = "ai" | "overridden" | null;
 
 export type IdeaStatus = "active" | "archived" | "deleted";
 

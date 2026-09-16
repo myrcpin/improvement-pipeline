@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Loader2, Sparkles, UserPen } from "lucide-react";
+import { FieldHelp } from "@/components/FieldHelp";
+import { suggestEffortRisk } from "@/lib/ai-suggest";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +19,7 @@ import {
   RISK_LEVELS,
   ROLES,
   type Effort,
+  type FieldSource,
   type ProcessArea,
   type RiskLevel,
   type Role,
@@ -31,7 +35,50 @@ export type NewIdea = {
   role: Role;
   headcount: number;
   submittedBy: string;
+  effortSource: FieldSource;
+  riskSource: FieldSource;
 };
+
+/** idle: no AI yet · loading · ai: value came from AI · overridden: human changed it · unavailable: AI failed */
+type AiState = "idle" | "loading" | "ai" | "overridden" | "unavailable";
+
+const AI_DEBOUNCE_MS = 900;
+
+function AiNote({ state }: { state: AiState }) {
+  if (state === "idle") return null;
+  const map: Record<Exclude<AiState, "idle">, { icon: ReactNode; text: string }> = {
+    loading: { icon: <Loader2 className="size-3 animate-spin" />, text: "Getting AI suggestion…" },
+    ai: { icon: <Sparkles className="size-3" />, text: "AI suggested, tap to change" },
+    overridden: { icon: <UserPen className="size-3" />, text: "Manually overridden" },
+    unavailable: { icon: null, text: "AI suggestion unavailable, please choose" },
+  };
+  const { icon, text } = map[state];
+  return (
+    <p
+      data-testid="ai-note"
+      className="flex items-center gap-1 text-[11px] text-muted-foreground"
+      aria-live="polite"
+    >
+      {icon}
+      {text}
+    </p>
+  );
+}
+
+function HelpLabel({
+  field,
+  children,
+}: {
+  field: "area" | "effort" | "risk" | "role";
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Label>{children}</Label>
+      <FieldHelp field={field} />
+    </div>
+  );
+}
 
 export function SubmitIdeaForm({ onSubmit }: { onSubmit: (idea: NewIdea) => void }) {
   const [title, setTitle] = useState("");
@@ -43,6 +90,53 @@ export function SubmitIdeaForm({ onSubmit }: { onSubmit: (idea: NewIdea) => void
   const [role, setRole] = useState<Role>("Analyst");
   const [headcount, setHeadcount] = useState("5");
   const [submittedBy, setSubmittedBy] = useState("");
+  const [effortAi, setEffortAi] = useState<AiState>("idle");
+  const [riskAi, setRiskAi] = useState<AiState>("idle");
+  const requestId = useRef(0);
+  // Latest override flags, read inside the async callback without re-triggering the effect.
+  const overridden = useRef({ effort: false, risk: false });
+  overridden.current = { effort: effortAi === "overridden", risk: riskAi === "overridden" };
+
+  // Ask the AI once both title and description are filled in (debounced while typing).
+  useEffect(() => {
+    const t = title.trim();
+    const d = description.trim();
+    if (!t || !d) return;
+    const id = ++requestId.current;
+    const timer = setTimeout(async () => {
+      if (!overridden.current.effort) setEffortAi("loading");
+      if (!overridden.current.risk) setRiskAi("loading");
+      const res = await suggestEffortRisk({ data: { title: t, description: d } }).catch(() => ({
+        ok: false as const,
+        error: "request failed",
+      }));
+      if (id !== requestId.current) return; // a newer request superseded this one
+      if (!overridden.current.effort) {
+        if (res.ok) setEffort(res.effort);
+        setEffortAi(res.ok ? "ai" : "unavailable");
+      }
+      if (!overridden.current.risk) {
+        if (res.ok) setRisk(res.risk);
+        setRiskAi(res.ok ? "ai" : "unavailable");
+      }
+    }, AI_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [title, description]);
+
+  const source = (s: AiState): FieldSource =>
+    s === "ai" ? "ai" : s === "overridden" ? "overridden" : null;
+
+  const reset = () => {
+    requestId.current++;
+    setTitle("");
+    setDescription("");
+    setHoursSaved("2");
+    setSubmittedBy("");
+    setEffort("Medium");
+    setRisk("Medium");
+    setEffortAi("idle");
+    setRiskAi("idle");
+  };
 
   return (
     <form
@@ -59,11 +153,10 @@ export function SubmitIdeaForm({ onSubmit }: { onSubmit: (idea: NewIdea) => void
           role,
           headcount: Math.max(1, Math.round(Number(headcount) || 1)),
           submittedBy: submittedBy.trim() || "Anonymous",
+          effortSource: source(effortAi),
+          riskSource: source(riskAi),
         });
-        setTitle("");
-        setDescription("");
-        setHoursSaved("2");
-        setSubmittedBy("");
+        reset();
       }}
       className="space-y-4"
     >
@@ -91,7 +184,7 @@ export function SubmitIdeaForm({ onSubmit }: { onSubmit: (idea: NewIdea) => void
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label>Process affected</Label>
+          <HelpLabel field="area">Process affected</HelpLabel>
           <Select value={area} onValueChange={(v) => setArea(v as ProcessArea)}>
             <SelectTrigger>
               <SelectValue />
@@ -107,8 +200,15 @@ export function SubmitIdeaForm({ onSubmit }: { onSubmit: (idea: NewIdea) => void
         </div>
 
         <div className="space-y-2">
-          <Label>Effort to implement</Label>
-          <Select value={effort} onValueChange={(v) => setEffort(v as Effort)}>
+          <HelpLabel field="effort">Effort to implement</HelpLabel>
+          <Select
+            value={effort}
+            onValueChange={(v) => {
+              setEffort(v as Effort);
+              // A human pick always wins over the AI (also stops a pending suggestion replacing it).
+              if (effortAi !== "unavailable") setEffortAi("overridden");
+            }}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -120,11 +220,18 @@ export function SubmitIdeaForm({ onSubmit }: { onSubmit: (idea: NewIdea) => void
               ))}
             </SelectContent>
           </Select>
+          <AiNote state={effortAi} />
         </div>
 
         <div className="space-y-2">
-          <Label>Risk / control impact</Label>
-          <Select value={risk} onValueChange={(v) => setRisk(v as RiskLevel)}>
+          <HelpLabel field="risk">Risk / control impact</HelpLabel>
+          <Select
+            value={risk}
+            onValueChange={(v) => {
+              setRisk(v as RiskLevel);
+              if (riskAi !== "unavailable") setRiskAi("overridden");
+            }}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -136,10 +243,11 @@ export function SubmitIdeaForm({ onSubmit }: { onSubmit: (idea: NewIdea) => void
               ))}
             </SelectContent>
           </Select>
+          <AiNote state={riskAi} />
         </div>
 
         <div className="space-y-2">
-          <Label>Role / pay grade affected</Label>
+          <HelpLabel field="role">Role / pay grade affected</HelpLabel>
           <Select value={role} onValueChange={(v) => setRole(v as Role)}>
             <SelectTrigger>
               <SelectValue />
