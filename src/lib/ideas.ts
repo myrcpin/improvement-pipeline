@@ -29,8 +29,8 @@ export const HOURLY_RATES: Record<Role, number> = {
 
 export const EFFORT_WEIGHT: Record<Effort, number> = { Low: 1, Medium: 3, High: 6 };
 
-/** Raw score at which an idea reaches a 10/10 impact score (10 hrs/week at Low effort). */
-export const SCORE_CEILING = 520;
+/** Raw score at which an idea reaches a 10/10 impact score (roughly 6 hrs/week at Low effort). */
+export const SCORE_CEILING = 300;
 
 export const STAGES = [
   "Submitted",

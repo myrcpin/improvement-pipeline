@@ -116,10 +116,7 @@ export function IdeaDialog({
               </div>
               <div className="space-y-2">
                 <Label>Priority (set by approver)</Label>
-                <Select
-                  value={priority === "" ? undefined : priority}
-                  onValueChange={(v) => setPriority(v as Priority)}
-                >
+                <Select value={priority} onValueChange={(v) => setPriority(v as Priority)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Not set" />
                   </SelectTrigger>

@@ -115,7 +115,7 @@ export function IdeaCard({
                   <ArchiveRestore className="size-4" /> Restore to Submitted
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem variant="destructive" onSelect={() => setConfirm(true)}>
+              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setConfirm(true)}>
                 <Trash2 className="size-4" /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
