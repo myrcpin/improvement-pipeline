@@ -1,7 +1,5 @@
-import { useState } from "react";
 import {
   Archive,
-  ArchiveRestore,
   CalendarClock,
   Clock,
   Gauge,
@@ -17,16 +15,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   annualHours,
   daysBetween,
@@ -53,39 +41,37 @@ const priorityTone: Record<string, string> = {
 export function IdeaCard({
   idea,
   onDragStart,
+  onDragEnd,
   onEdit,
   onArchive,
-  onRestore,
   onDelete,
-  draggable = true,
+  isDragging = false,
 }: {
   idea: Idea;
   onDragStart?: (id: string) => void;
+  onDragEnd?: () => void;
   onEdit: (id: string) => void;
-  onArchive?: (id: string) => void;
-  onRestore?: (id: string) => void;
+  onArchive: (id: string) => void;
   onDelete: (id: string) => void;
-  draggable?: boolean;
+  isDragging?: boolean;
 }) {
-  const [confirm, setConfirm] = useState(false);
   const score = impactScore(idea);
   const hours = annualHours(idea);
   const roi = roiRatio(idea);
   const daysInColumn = daysBetween(idea.stageSince);
-  const variance =
-    idea.actualHoursSaved == null ? null : idea.actualHoursSaved - idea.hoursSaved;
+  const variance = idea.actualHoursSaved == null ? null : idea.actualHoursSaved - idea.hoursSaved;
 
   return (
     <article
-      draggable={draggable}
+      draggable
       onDragStart={(e) => {
-        if (!draggable) return;
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", idea.id);
         onDragStart?.(idea.id);
       }}
-      className={`group rounded-lg border border-border bg-card p-4 shadow-[var(--shadow-card)] transition-shadow hover:shadow-lg ${
-        draggable ? "cursor-grab active:cursor-grabbing" : ""
+      onDragEnd={() => onDragEnd?.()}
+      className={`group rounded-lg border border-border bg-card p-4 shadow-[var(--shadow-card)] transition-[box-shadow,opacity] hover:shadow-lg cursor-grab active:cursor-grabbing ${
+        isDragging ? "opacity-40" : ""
       }`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -94,9 +80,12 @@ export function IdeaCard({
           <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">
             {idea.area}
           </span>
-          <DropdownMenu>
+          {/* modal={false}: a modal menu that opens a dialog can leave the page locked
+              (pointer-events: none) and swallow the click, which made "Edit details" appear dead. */}
+          <DropdownMenu modal={false}>
             <DropdownMenuTrigger
               aria-label="Idea actions"
+              draggable={false}
               className="rounded-md p-1 text-muted-foreground hover:bg-surface-subtle hover:text-foreground"
             >
               <MoreVertical className="size-4" />
@@ -105,18 +94,14 @@ export function IdeaCard({
               <DropdownMenuItem onSelect={() => onEdit(idea.id)}>
                 <Pencil className="size-4" /> Edit details
               </DropdownMenuItem>
-              {onArchive && (
-                <DropdownMenuItem onSelect={() => onArchive(idea.id)}>
-                  <Archive className="size-4" /> Archive
-                </DropdownMenuItem>
-              )}
-              {onRestore && (
-                <DropdownMenuItem onSelect={() => onRestore(idea.id)}>
-                  <ArchiveRestore className="size-4" /> Restore to Submitted
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setConfirm(true)}>
-                <Trash2 className="size-4" /> Delete
+              <DropdownMenuItem onSelect={() => onArchive(idea.id)}>
+                <Archive className="size-4" /> Archive
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={() => onDelete(idea.id)}
+              >
+                <Trash2 className="size-4" /> Move to Deleted
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -222,21 +207,6 @@ export function IdeaCard({
       <p className="mt-3 text-[11px] text-muted-foreground">
         Submitted by {idea.submittedBy} · {daysInColumn}d in this column
       </p>
-
-      <AlertDialog open={confirm} onOpenChange={setConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete {idea.id}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This permanently removes “{idea.title}” from the pipeline. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => onDelete(idea.id)}>Delete idea</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </article>
   );
 }

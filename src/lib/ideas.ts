@@ -64,8 +64,13 @@ export type Idea = {
   targetDate: string | null;
   actualHoursSaved: number | null;
   implementedAt: string | null;
-  archived: boolean;
+  /** Lifecycle: active on the board, archived (reversible), or soft-deleted (purged after retention). */
+  status: IdeaStatus;
+  archivedAt: string | null;
+  deletedAt: string | null;
 };
+
+export type IdeaStatus = "active" | "archived" | "deleted";
 
 /* ---------- calculations ---------- */
 
@@ -112,6 +117,38 @@ export function validateMove(idea: Idea, stage: Stage): string | null {
 
 export const stageRank = (s: Stage) => STAGES.indexOf(s);
 
+/* ---------- retention (soft delete + purge) ---------- */
+
+/** Deleted ideas are kept this long before permanent removal. */
+export const RETENTION_DAYS = 30;
+const DAY_MS = 86_400_000;
+
+/** Timestamp at which a deleted idea becomes eligible for permanent removal. */
+export const purgeAt = (i: Pick<Idea, "deletedAt">) =>
+  i.deletedAt ? new Date(i.deletedAt).getTime() + RETENTION_DAYS * DAY_MS : null;
+
+/** Whole days left before permanent removal (0 means due today). */
+export const daysUntilPurge = (i: Pick<Idea, "deletedAt">, now = Date.now()) => {
+  const at = purgeAt(i);
+  return at == null ? null : Math.max(0, Math.ceil((at - now) / DAY_MS));
+};
+
+/**
+ * Removes deleted ideas whose retention window has passed.
+ *
+ * In this demo it runs in the browser on load and then hourly. In production the same rule
+ * belongs in a scheduled backend job (for example a daily cron / Supabase pg_cron task):
+ *   DELETE FROM ideas WHERE status = 'deleted' AND deleted_at < now() - interval '30 days';
+ * so records are purged even when nobody has the app open, and the purge is audit-logged.
+ */
+export function purgeExpired(ideas: Idea[], now = Date.now()): Idea[] {
+  return ideas.filter((i) => {
+    if (i.status !== "deleted") return true;
+    const at = purgeAt(i);
+    return at == null || at > now;
+  });
+}
+
 /* ---------- seed data ---------- */
 
 const daysAgo = (n: number) => {
@@ -121,6 +158,8 @@ const daysAgo = (n: number) => {
   return d.toISOString().slice(0, 10);
 };
 const daysAhead = (n: number) => daysAgo(-n);
+/** Full timestamp n days ago, used for archive / delete events. */
+const tsAgo = (n: number) => new Date(Date.now() - n * DAY_MS).toISOString();
 
 export const SEED_IDEAS: Idea[] = [
   {
@@ -146,7 +185,9 @@ export const SEED_IDEAS: Idea[] = [
     targetDate: daysAhead(45),
     actualHoursSaved: null,
     implementedAt: null,
-    archived: false,
+    status: "active",
+    archivedAt: null,
+    deletedAt: null,
   },
   {
     id: "IP-102",
@@ -171,7 +212,9 @@ export const SEED_IDEAS: Idea[] = [
     targetDate: daysAgo(30),
     actualHoursSaved: 7,
     implementedAt: daysAgo(24),
-    archived: false,
+    status: "active",
+    archivedAt: null,
+    deletedAt: null,
   },
   {
     id: "IP-103",
@@ -196,7 +239,9 @@ export const SEED_IDEAS: Idea[] = [
     targetDate: null,
     actualHoursSaved: null,
     implementedAt: null,
-    archived: false,
+    status: "active",
+    archivedAt: null,
+    deletedAt: null,
   },
   {
     id: "IP-104",
@@ -221,7 +266,9 @@ export const SEED_IDEAS: Idea[] = [
     targetDate: daysAhead(20),
     actualHoursSaved: null,
     implementedAt: null,
-    archived: false,
+    status: "active",
+    archivedAt: null,
+    deletedAt: null,
   },
   {
     id: "IP-105",
@@ -246,7 +293,9 @@ export const SEED_IDEAS: Idea[] = [
     targetDate: null,
     actualHoursSaved: null,
     implementedAt: null,
-    archived: false,
+    status: "active",
+    archivedAt: null,
+    deletedAt: null,
   },
   {
     id: "IP-106",
@@ -271,7 +320,9 @@ export const SEED_IDEAS: Idea[] = [
     targetDate: daysAgo(40),
     actualHoursSaved: 3,
     implementedAt: daysAgo(35),
-    archived: false,
+    status: "active",
+    archivedAt: null,
+    deletedAt: null,
   },
   {
     id: "IP-107",
@@ -296,7 +347,9 @@ export const SEED_IDEAS: Idea[] = [
     targetDate: null,
     actualHoursSaved: null,
     implementedAt: null,
-    archived: false,
+    status: "active",
+    archivedAt: null,
+    deletedAt: null,
   },
   {
     id: "IP-108",
@@ -321,7 +374,9 @@ export const SEED_IDEAS: Idea[] = [
     targetDate: null,
     actualHoursSaved: null,
     implementedAt: null,
-    archived: false,
+    status: "active",
+    archivedAt: null,
+    deletedAt: null,
   },
   {
     id: "IP-109",
@@ -346,7 +401,9 @@ export const SEED_IDEAS: Idea[] = [
     targetDate: null,
     actualHoursSaved: null,
     implementedAt: null,
-    archived: true,
+    status: "archived",
+    archivedAt: tsAgo(20),
+    deletedAt: null,
   },
   {
     id: "IP-110",
@@ -371,6 +428,62 @@ export const SEED_IDEAS: Idea[] = [
     targetDate: null,
     actualHoursSaved: null,
     implementedAt: null,
-    archived: false,
+    status: "active",
+    archivedAt: null,
+    deletedAt: null,
+  },
+  {
+    id: "IP-111",
+    title: "Manual FX rate upload for month-end revaluation",
+    description:
+      "Scripted upload of month-end FX rates into the revaluation tool. Parked while treasury evaluates a direct market data feed.",
+    area: "Reconciliation",
+    hoursSaved: 2.5,
+    effort: "Low",
+    risk: "Medium",
+    role: "Senior Analyst",
+    headcount: 4,
+    stage: "Pending Approval",
+    submittedBy: "O. Brennan",
+    submittedAt: daysAgo(48),
+    stageSince: daysAgo(41),
+    approverName: null,
+    approverRole: null,
+    costToImplement: null,
+    priority: null,
+    owner: null,
+    targetDate: null,
+    actualHoursSaved: null,
+    implementedAt: null,
+    status: "archived",
+    archivedAt: tsAgo(5),
+    deletedAt: null,
+  },
+  {
+    id: "IP-112",
+    title: "Fax-to-email bridge for legacy client instructions",
+    description:
+      "Convert incoming fax instructions to email automatically. Dropped because the last fax-dependent clients moved to the portal.",
+    area: "Cash Processing",
+    hoursSaved: 1.5,
+    effort: "Medium",
+    risk: "High",
+    role: "Analyst",
+    headcount: 6,
+    stage: "Submitted",
+    submittedBy: "H. Qureshi",
+    submittedAt: daysAgo(64),
+    stageSince: daysAgo(64),
+    approverName: null,
+    approverRole: null,
+    costToImplement: null,
+    priority: null,
+    owner: null,
+    targetDate: null,
+    actualHoursSaved: null,
+    implementedAt: null,
+    status: "deleted",
+    archivedAt: null,
+    deletedAt: tsAgo(18),
   },
 ];
